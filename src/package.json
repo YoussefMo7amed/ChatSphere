@@ -1,0 +1,31 @@
+{
+  "name": "chat-sys",
+  "version": "1.0.0",
+  "description": "A scalable chat system that allows the creation of multiple applications, each identified by a unique token. Each application can have multiple chats, with each chat having a unique number starting from 1. Messages within each chat are also numbered starting from 1. The system supports searching through messages using ElasticSearch for partial matches. It includes features for tracking the number of chats and messages per application and chat, respectively, with updates not lagging more than 1 hour. The architecture is designed to handle high concurrency and race conditions, utilizing a queuing system for chat and message creation to minimize direct database writes during request handling. The database is optimized with appropriate indices for performance.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "keywords": [
+    "chat-app",
+    "redis",
+    "elasticsearch",
+    "assessment",
+    "instabug"
+  ],
+  "author": "Youssef Mohamed",
+  "license": "MIT",
+  "dependencies": {
+    "body-parser": "^1.20.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "mysql2": "^3.11.4",
+    "redis": "^4.7.0",
+    "sequelize": "^6.37.5"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.7"
+  }
+}

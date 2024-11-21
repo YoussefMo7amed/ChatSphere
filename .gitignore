@@ -1,0 +1,40 @@
+node_modules
+npm-debug.log
+# Node modules
+node_modules/
+
+# Build artifacts (adjust based on your build tool)
+build/
+dist/
+out/
+
+# Temporary files
+.tmp/
+
+# Caching directories
+.cache/
+
+# IDE specific files
+# (Adjust based on your IDE, VSCode examples)
+.vscode/
+
+# Environment variables
+# .env
+
+# Testing coverage reports
+coverage/
+
+# Compiled TypeScript files (if using TypeScript)
+*.ts
+
+# Compiled CoffeeScript files (if using CoffeeScript)
+*.coffee
+
+.todo*
+.todo.*
+.vscode
+dummydata
+
+
+alias.*
+yarn.lock
