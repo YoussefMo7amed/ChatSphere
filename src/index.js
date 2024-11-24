@@ -5,6 +5,7 @@ const swaggerSpec = require("./config/swagger");
 const api = require("./app/routes/index");
 require("dotenv").config();
 const bodyParser = require("body-parser");
+const { connectToRedis } = require("./config/redis");
 
 const app = express();
 
@@ -29,7 +30,7 @@ app.get("/", (req, res) => {
         <p>Checkout the API documentation on <a href="/api-docs">/api-docs</a></p>
     `);
 });
-
+connectToRedis();
 app.use(api);
 
 app.listen(3000, () => {
