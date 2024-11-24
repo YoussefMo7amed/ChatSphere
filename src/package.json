@@ -4,7 +4,10 @@
   "description": "A scalable chat system that allows the creation of multiple applications, each identified by a unique token. Each application can have multiple chats, with each chat having a unique number starting from 1. Messages within each chat are also numbered starting from 1. The system supports searching through messages using ElasticSearch for partial matches. It includes features for tracking the number of chats and messages per application and chat, respectively, with updates not lagging more than 1 hour. The architecture is designed to handle high concurrency and race conditions, utilizing a queuing system for chat and message creation to minimize direct database writes during request handling. The database is optimized with appropriate indices for performance.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
+    "test:watch": "nodemon --exec npm test",
+    "test:integration": "jest tests/integration",
+    "test:unit": "jest tests/unit",
     "start": "node index.js"
   },
   "keywords": [
@@ -25,10 +28,12 @@
     "redis": "^4.7.0",
     "sequelize": "^6.37.5",
     "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1"
+    "swagger-ui-express": "^5.0.1",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",
-    "nodemon": "^3.1.7"
+    "nodemon": "^3.1.7",
+    "supertest": "^7.0.0"
   }
 }
