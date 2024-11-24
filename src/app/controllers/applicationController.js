@@ -34,7 +34,7 @@ class ApplicationController {
                 await applicationService.getAllApplications({ page, limit });
             successResponse(res, data, 200, meta);
         } catch (error) {
-            errorResponse(res, error.message, 400);
+            errorResponse(res, error.message, error.statusCode ?? 400);
         }
     }
 
@@ -51,7 +51,7 @@ class ApplicationController {
             );
             successResponse(res, application, 200);
         } catch (error) {
-            console.log(error);
+            console.error(error);
             errorResponse(res, error.message, error.statusCode ?? 400);
         }
     }
@@ -75,7 +75,7 @@ class ApplicationController {
             }
             successResponse(res, application, 200);
         } catch (error) {
-            errorResponse(res, error.message, 400);
+            errorResponse(res, error.message, error.statusCode ?? 400);
         }
     }
 
@@ -84,16 +84,16 @@ class ApplicationController {
      * @param {Request} req
      * @param {Response} res
      */
-        async delete(req, res) {
-            try {
-                const { token } = req.params; // Application token
-                await applicationService.deleteApplicationByToken(token);
-                successResponse(res, "Application deleted", 200);
-            } catch (error) {
-                console.error(error);
-                errorResponse(res, error.message, error.statusCode ?? 400);
-            }
+    async delete(req, res) {
+        try {
+            const { token } = req.params; // Application token
+            await applicationService.deleteApplicationByToken(token);
+            successResponse(res, "Application deleted", 200);
+        } catch (error) {
+            console.error(error);
+            errorResponse(res, error.message, error.statusCode ?? 400);
         }
+    }
 }
 
 module.exports = new ApplicationController();
