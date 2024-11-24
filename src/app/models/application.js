@@ -1,20 +1,17 @@
 const { Model, DataTypes } = require("sequelize");
 const { v4: uuidv4 } = require("uuid");
-
 /**
  * Returns the Application model class.
  * @param {Sequelize} sequelize The Sequelize instance.
  * @returns {Application} The Application model class.
  */
-
 module.exports = (sequelize) => {
     class Application extends Model {
         static associate(models) {
-            // Application has many chats
             this.hasMany(models.Chat, {
                 foreignKey: "application_id",
                 as: "chats",
-                onDelete: "CASCADE", // Deletes all chats when an application is deleted
+                onDelete: "CASCADE",
             });
         }
     }
@@ -31,6 +28,10 @@ module.exports = (sequelize) => {
                 allowNull: false,
                 validate: {
                     notEmpty: { msg: "Application name cannot be empty" },
+                    len: {
+                        args: [3, 50],
+                        msg: "Application name must be between 3 and 50 characters",
+                    },
                 },
             },
             token: {
@@ -42,6 +43,9 @@ module.exports = (sequelize) => {
             chats_count: {
                 type: DataTypes.INTEGER,
                 defaultValue: 0,
+                validate: {
+                    min: { args: [0], msg: "Chats count cannot be negative" },
+                },
             },
         },
         {
@@ -51,6 +55,18 @@ module.exports = (sequelize) => {
             timestamps: true,
             createdAt: "created_at",
             updatedAt: "updated_at",
+
+            // --- for soft delete ---
+            // paranoid: true,
+            // deletedAt: "deleted_at",
+
+            // hooks: {
+            //     beforeCreate: (application) => {
+            //         application.token = uuidv4();
+            //         console.log("Generated Token:", application.token);
+            //     },
+            // },
+            indexes: [{ unique: true, fields: ["token"] }],
         }
     );
 
