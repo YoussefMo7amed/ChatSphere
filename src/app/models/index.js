@@ -7,19 +7,40 @@ const config = require("../../config/database")[env];
 
 const db = {};
 
-const sequelize = new Sequelize(
-    config.database,
-    config.username,
-    config.password,
-    { host: config.host, dialect: config.dialect }
-);
+    const sequelize = new Sequelize(
+        config.database,
+        config.username,
+        config.password,
+        {
+            host: config.host,
+            dialect: config.dialect,
+            logging: false,
+            pool: {
+                max: 10, // Maximum number of connections
+                min: 0, // Minimum number of connections
+                acquire: 30000, // Timeout for acquiring a connection
+                idle: 10000, // Time before an idle connection is released
+            },
+        }
+    );
 
-try {
-    sequelize.authenticate();
-    console.log("Connection has been established successfully.");
-} catch (err) {
-    console.error("Unable to connect to the database:", err);
-}
+// Create the database if it doesn't exist
+sequelize
+    .query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\`;`)
+    .then(() => {
+        console.log("Database created if not existed.");
+    })
+    .catch((err) => {
+        console.error("An error occurred while creating the database:", err);
+    })
+    .finally(() => {
+        try {
+            sequelize.authenticate();
+            console.log("Connection has been established successfully.");
+        } catch (err) {
+            console.error("Unable to connect to the database:", err);
+        }
+    });
 
 // Dynamically load all models in the folder
 fs.readdirSync(__dirname)
