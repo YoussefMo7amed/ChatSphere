@@ -23,14 +23,16 @@ class ApplicationController {
     }
 
     /**
-     * List all applications
+     * Retrieves all applications.
      * @param {Request} req
      * @param {Response} res
      */
     async getAll(req, res) {
         try {
-            const applications = await applicationService.getAllApplications();
-            successResponse(res, applications, 200);
+            const { page = 1, limit = 10 } = req.query;
+            const { data, ...meta } =
+                await applicationService.getAllApplications({ page, limit });
+            successResponse(res, data, 200, meta);
         } catch (error) {
             errorResponse(res, error.message, 400);
         }
@@ -47,13 +49,10 @@ class ApplicationController {
             const application = await applicationService.getApplicationByToken(
                 token
             );
-            if (!application) {
-                errorResponse(res, "Application not found", 404);
-                return;
-            }
             successResponse(res, application, 200);
         } catch (error) {
-            errorResponse(res, error.message, 400);
+            console.log(error);
+            errorResponse(res, error.message, error.statusCode ?? 400);
         }
     }
 
@@ -85,15 +84,16 @@ class ApplicationController {
      * @param {Request} req
      * @param {Response} res
      */
-    async delete(req, res) {
-        try {
-            const { token } = req.params; // Application token
-            await applicationService.deleteApplicationByToken(token);
-            successResponse(res, "Application deleted", 200);
-        } catch (error) {
-            errorResponse(res, error.message, 400);
+        async delete(req, res) {
+            try {
+                const { token } = req.params; // Application token
+                await applicationService.deleteApplicationByToken(token);
+                successResponse(res, "Application deleted", 200);
+            } catch (error) {
+                console.error(error);
+                errorResponse(res, error.message, error.statusCode ?? 400);
+            }
         }
-    }
 }
 
 module.exports = new ApplicationController();
