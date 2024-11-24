@@ -12,16 +12,11 @@ const chatController = require("../controllers/chatController");
 /**
  * @swagger
  * /applications/{token}/chats:
+ *   parameters:
+ *     - $ref: '#/components/parameters/TokenParameter'
  *   post:
- *     summary: Create a new    chat
+ *     summary: Create a new chat
  *     tags: [chats]
- *     parameters:
- *       - in: path
- *         name: token
- *         required: true
- *         description: The token of the application
- *         schema:
- *           type: string
  *     responses:
  *       201:
  *         description: Created
@@ -29,16 +24,23 @@ const chatController = require("../controllers/chatController");
  *     summary: Get all chats for an application
  *     tags: [chats]
  *     parameters:
- *       - in: path
- *         name: token
- *         required: true
- *         description: The token of the application
+ *       - in: query
+ *         name: page
  *         schema:
- *           type: string
+ *           type: integer
+ *         default: 1
+ *         description: The page number to be retrieved
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         default: 10
+ *         description: The number of items per page
  *     responses:
  *       200:
  *         description: Ok
  */
+
 router.post("/", chatController.create);
 router.get("/", chatController.getChats);
 

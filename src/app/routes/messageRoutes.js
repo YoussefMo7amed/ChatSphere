@@ -71,6 +71,24 @@ const messageController = require("../controllers/messageController");
  *         description: The number of the chat
  *         schema:
  *           type: integer
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         default: 1
+ *         description: The page number to be retrieved
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         default: 10
+ *         description: The number of items per page
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *         default: "-created_at"
+ *         description: The field to sort by, can be prefixed with '-' for descending order
  *     responses:
  *       200:
  *         description: Ok

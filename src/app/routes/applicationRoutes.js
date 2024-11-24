@@ -43,20 +43,55 @@ const applicationController = require("../controllers/applicationController");
  *     tags: [applications]
  *     summary: Get all applications
  *     description: Get all applications
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         default: 1
+ *         description: The page number to be retrieved
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         default: 10
+ *         description: The number of items per page
  *     responses:
  *       200:
  *         description: Ok
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   name:
- *                     type: string
- *                   token:
- *                     type: string
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       name:
+ *                         type: string
+ *                       token:
+ *                         type: string
+ *                       chats_count:
+ *                         type: integer
+ *                 meta:
+ *                   type: object
+ *                   properties:
+ *                     pageNumber:
+ *                       type: integer
+ *                     limitNumber:
+ *                       type: integer
+ *                     startIndex:
+ *                       type: integer
+ *                     totalPages:
+ *                       type: integer
+ *                     totalItems:
+ *                       type: integer
+ *                     next:
+ *                       type: string
  */
 
 /**
