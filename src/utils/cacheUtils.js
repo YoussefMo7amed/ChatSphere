@@ -1,4 +1,4 @@
-const { redisClient: client } = require("../config/redis");
+const { getRedisClient } = require("../config/redis");
 
 const TIME_CONSTANTS = {
     SECOND: 1,
@@ -7,6 +7,7 @@ const TIME_CONSTANTS = {
     DAY: 86400,
     WEEK: 604800,
 };
+
 class RedisClient {
     /**
      * Retrieves a value from Redis cache.
@@ -16,14 +17,21 @@ class RedisClient {
      * @returns {Promise<string | null>} - Retrieved value or null if Redis unavailable
      */
     static async getCache(key) {
+        const client = getRedisClient();
+        if (!client) {
+            console.warn("Redis is unavailable, not caching.");
+            return null; // Return null if Redis is unavailable
+        }
+
         try {
             const value = await client.get(key);
-            if (key.startsWith("ref:")) {
+            if (key.startsWith("ref:") && value) {
+                // Get the referenced key's value
                 return await client.get(value);
             }
             return value;
         } catch (error) {
-            console.warn(`Redis error: ${error.message}`);
+            console.warn(`Redis error while getting cache: ${error.message}`);
             return null;
         }
     }
@@ -38,6 +46,12 @@ class RedisClient {
      * @param {string|null} [ref=null] - Optional reference key pointing to the actual key.
      */
     static async setCache(key, value, ttl = TIME_CONSTANTS.HOUR, ref = null) {
+        const client = getRedisClient();
+        if (!client) {
+            console.warn("Redis is unavailable, not caching.");
+            return; // Return if Redis is unavailable
+        }
+
         try {
             if (ref) {
                 // If a reference is provided, link it to the actual key
@@ -47,7 +61,7 @@ class RedisClient {
                 await client.set(key, value, { EX: ttl });
             }
         } catch (error) {
-            console.warn(`Redis error: ${error.message}`);
+            console.warn(`Redis error while setting cache: ${error.message}`);
         }
     }
 
@@ -57,10 +71,16 @@ class RedisClient {
      * @returns {Promise<void>}
      */
     static async deleteCache(key) {
+        const client = getRedisClient();
+        if (!client) {
+            console.warn("Redis is unavailable, not deleting cache.");
+            return; // Return if Redis is unavailable
+        }
+
         try {
             await client.del(key);
         } catch (error) {
-            console.warn(`Redis error: ${error.message}`);
+            console.warn(`Redis error while deleting cache: ${error.message}`);
         }
     }
 }
