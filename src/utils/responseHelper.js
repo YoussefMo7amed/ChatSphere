@@ -29,7 +29,6 @@ function errorResponse(
     errorCode = null,
     meta = {}
 ) {
-    console.log(statusCode);
     return res.status(statusCode).json({
         success: false,
         error: {
