@@ -1,29 +1,137 @@
 const { Chat } = require("../models");
 const applicationRepository = require("./applicationRepository");
+const { filterParamsToSQL, NotFoundError } = require("../../utils/shared");
 
 class ChatRepository {
-    /**
-     * Create a new chat
-     * @param {object} data - The data of the chat to be created
-     * @returns {Promise<object>} - The created chat
-     */
-    async create(data) {
-        try {
-            return await Chat.create(data);
-        } catch (error) {
-            throw new Error(error.message);
-        }
+    _allowedSortingFields = ["created_at", "number"];
+
+    async _performTransaction(operation, transaction = null) {
+        const tx = transaction || (await sequelize.transaction());
+        return operation(tx);
     }
 
     /**
-     * Retrieve all chats for a specific application
-     * @param {number} application_id - The ID of the application
-     * @returns {Promise<Array>} - A promise that resolves to an array of chats
+     * Finds a chat based on the specified where clause.
+     * @param {object} whereClause - The conditions to find the chat.
+     * @param {Transaction} transaction - The transaction to use for the query.
+     * @returns {Promise<object>} - The found chat.
+     * @throws {NotFoundError} - If no chat is found.
      */
-    async findAllByApplication(application_id) {
+    async _find(whereClause, transaction) {
+        const chat = await Chat.findOne({
+            where: whereClause,
+            transaction,
+        });
+        if (!chat) {
+            throw new NotFoundError("Chat not found");
+        }
+        return chat;
+    }
+
+    /**
+     * Updates a chat based on the specified where clause and updates.
+     * @param {object} whereClause - The conditions to find the chat.
+     * @param {object} updates - The changes to apply to the chat.
+     * @param {Transaction} [transaction] - The transaction to use for the query.
+     * @returns {Promise<object>} - The updated chat.
+     * @throws {NotFoundError} - If the chat is not found.
+     * @throws {Error} - If there is an error during the operation.
+     */
+    async _update(whereClause, updates, transaction = null) {
+        return this._performTransaction(async (tx) => {
+            try {
+                const chat = await this._find(whereClause, tx);
+                await chat.update(updates, { transaction: tx });
+                await tx.commit();
+                return chat;
+            } catch (error) {
+                await tx.rollback();
+                console.error(error);
+                throw new Error(`Error updating chat: ${error.message}`);
+            }
+        }, transaction);
+    }
+
+    /**
+     * Deletes a chat based on the specified where clause.
+     * @param {object} whereClause - The conditions to find and delete the chat.
+     * @param {Transaction} [transaction] - The transaction to use for the operation (optional).
+     * @returns {Promise<void>} - A promise that resolves when the chat is deleted.
+     * @throws {NotFoundError} - If the chat is not found.
+     * @throws {Error} - If there is an error during the operation.
+     */
+    async _delete(whereClause, transaction = null) {
+        return this._performTransaction(async (tx) => {
+            try {
+                const deleted = await Chat.destroy({
+                    where: whereClause,
+                    transaction: tx,
+                });
+                if (deleted === 0) {
+                    throw new NotFoundError("Chat not found");
+                }
+                await tx.commit();
+            } catch (error) {
+                await tx.rollback();
+                console.error(error);
+                throw new Error(`Error deleting chat: ${error.message}`);
+            }
+        }, transaction);
+    }
+
+    /**
+     * Creates a new chat for an application.
+     * @param {object} data - The data to create the chat with.
+     * @param {Transaction} [transaction] - The transaction to use for the query (optional).
+     * @returns {Promise<Chat>} - A promise that resolves to the created chat.
+     * @throws {Error} - If there is an error during the operation.
+     */
+    async create(data, transaction = null) {
+        return this._performTransaction(async (tx) => {
+            try {
+                const maxNumber = await Chat.max("number", {
+                    where: { application_id: data.application_id },
+                    transaction: tx,
+                });
+                const nextNumber = (maxNumber || 0) + 1;
+                data.number = nextNumber;
+                return await Chat.create(data, { transaction: tx });
+            } catch (error) {
+                console.error(error);
+                throw new Error(`Error creating application: ${error.message}`);
+            }
+        }, transaction);
+    }
+
+    /**
+     * Retrieves all chats for a specific application
+     * @param {number} application_id - The ID of the application
+     * @param {object} filterParams - The filter parameters for the query
+     * @returns {Promise<Chat[]>} - A promise that resolves to the list of chats
+     */
+    async findAllByApplicationId(application_id, filterParams) {
+        console.log(`application_id: ${application_id}`);
+
         try {
-            return await Chat.findAll({ where: { application_id } });
+            const { limit, offset, order, ...rest } = filterParamsToSQL(
+                filterParams,
+                this._allowedSortingFields
+            );
+
+            const count = await Chat.count({
+                where: { ...rest, application_id },
+            });
+
+            const rows = await Chat.findAll({
+                limit,
+                offset,
+                order,
+                where: { ...rest, application_id },
+            });
+
+            return { count, rows };
         } catch (error) {
+            console.error(error);
             throw new Error(error.message);
         }
     }
@@ -34,9 +142,9 @@ class ChatRepository {
      * @param {number} application_id - The ID of the application
      * @returns {Promise<Chat|null>} - The found chat or null if no chat is found
      */
-    async findByNumberAndApplicationId(number, application_id) {
+    async findByNumberAndApplicationId(number, application_id, filterParams) {
         try {
-            return await Chat.findOne({ where: { number, application_id } });
+            return await this._find({ number, application_id });
         } catch (error) {
             throw new Error(error.message);
         }
@@ -47,23 +155,45 @@ class ChatRepository {
             const application = await applicationRepository.findByToken(
                 application_token
             );
-            return await Chat.findOne({
-                where: { number, application_id: application.id },
-            });
+            return await this._find({ number, application_id: application.id });
         } catch (error) {
             throw new Error(error.message);
         }
     }
+
     /**
-     * Increment the messages count of a chat
+     * Increment the messages count for a chat
      * @param {number} chat_id - The ID of the chat
+     * @param {Transaction} [transaction] - The transaction to use (optional). If not provided, a new one will be created.
      * @returns {Promise<Chat>} - The updated chat
+     * @throws {Error} - If there is an error during the operation.
      */
-    async incrementMessagesCount(chat_id) {
+    async incrementMessagesCount(chat_id, transaction = null) {
         try {
-            return await Chat.increment("messages_count", {
-                where: { id: chat_id },
-            });
+            return await this._update(
+                { id: chat_id },
+                { messages_count: sequelize.literal("messages_count + 1") },
+                transaction
+            );
+        } catch (error) {
+            throw new Error(error.message);
+        }
+    }
+
+    /**
+     * Decrement the messages count for a chat
+     * @param {number} chat_id - The ID of the chat
+     * @param {Transaction} [transaction] - The transaction to use (optional). If not provided, a new one will be created.
+     * @returns {Promise<Chat>} - The updated chat
+     * @throws {Error} - If there is an error during the operation.
+     */
+    async decrementMessagesCount(chat_id, transaction = null) {
+        try {
+            return await this._update(
+                { id: chat_id },
+                { messages_count: sequelize.literal("messages_count - 1") },
+                transaction
+            );
         } catch (error) {
             throw new Error(error.message);
         }
@@ -80,9 +210,20 @@ class ChatRepository {
             throw new Error(error.message);
         }
     }
-    // TODO:
-    //handle cascade deletion
-    //handle race condition
+
+    /**
+     * Update the messages count of a chat
+     * @param {number} chat_id - The ID of the chat
+     * @param {number} messages_count - The new messages count
+     * @returns {Promise<Chat>} - The updated chat
+     */
+    async updateMessagesCount(chat_id, messages_count) {
+        try {
+            return await this._update({ id: chat_id }, { messages_count });
+        } catch (error) {
+            throw new Error(error.message);
+        }
+    }
 }
 
 module.exports = new ChatRepository();
