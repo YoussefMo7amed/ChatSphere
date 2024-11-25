@@ -49,19 +49,17 @@ class RedisClient {
         const client = getRedisClient();
         if (!client) {
             console.warn("Redis is unavailable, not caching.");
-            return; // Return if Redis is unavailable
+            return;
         }
-
         try {
             if (ref) {
-                // If a reference is provided, link it to the actual key
                 await client.set(key, ref, { EX: ttl });
             } else {
-                // Otherwise, store the value directly
                 await client.set(key, value, { EX: ttl });
             }
         } catch (error) {
             console.warn(`Redis error while setting cache: ${error.message}`);
+            throw error;
         }
     }
 
