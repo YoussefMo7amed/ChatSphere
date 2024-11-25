@@ -34,7 +34,7 @@ class ApplicationController {
                 await applicationService.getAllApplications({ page, limit });
             successResponse(res, data, 200, meta);
         } catch (error) {
-            errorResponse(res, error.message, error.statusCode ?? 400);
+            errorResponse(res, error.message, 500);
         }
     }
 
@@ -51,8 +51,7 @@ class ApplicationController {
             );
             successResponse(res, application, 200);
         } catch (error) {
-            console.error(error);
-            errorResponse(res, error.message, error.statusCode ?? 400);
+            errorResponse(res, error.message, 404);
         }
     }
 
@@ -75,7 +74,7 @@ class ApplicationController {
             }
             successResponse(res, application, 200);
         } catch (error) {
-            errorResponse(res, error.message, error.statusCode ?? 400);
+            errorResponse(res, error.message, 500);
         }
     }
 
@@ -90,8 +89,7 @@ class ApplicationController {
             await applicationService.deleteApplicationByToken(token);
             successResponse(res, "Application deleted", 200);
         } catch (error) {
-            console.error(error);
-            errorResponse(res, error.message, error.statusCode ?? 400);
+            errorResponse(res, error.message, 404);
         }
     }
 }
