@@ -7,14 +7,14 @@ module.exports = (sequelize) => {
             this.belongsTo(models.Application, {
                 foreignKey: "application_id",
                 as: "application",
-                onDelete: "CASCADE", // Enables cascade delete for associated applications
+                onDelete: "CASCADE",
             });
 
             // Chat has many messages
             this.hasMany(models.Message, {
                 foreignKey: "chat_id",
                 as: "messages",
-                onDelete: "CASCADE", // Deletes all messages when a chat is deleted
+                onDelete: "CASCADE",
             });
         }
     }
@@ -50,7 +50,7 @@ module.exports = (sequelize) => {
             indexes: [
                 {
                     unique: true,
-                    fields: ["number", "application_id"],
+                    fields: ["application_id", "number"],
                 },
             ],
         }
