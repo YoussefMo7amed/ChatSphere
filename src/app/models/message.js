@@ -9,13 +9,6 @@ module.exports = (sequelize) => {
                 as: "chat",
                 onDelete: "CASCADE", 
             });
-
-            // Message belongs to an application (optional if directly associated)
-            this.belongsTo(models.Application, {
-                foreignKey: "application_id",
-                as: "application",
-                onDelete: "CASCADE", // Enables cascade delete for associated applications
-            });
         }
     }
 
@@ -41,11 +34,6 @@ module.exports = (sequelize) => {
                 type: DataTypes.INTEGER,
                 allowNull: false,
                 references: { model: "chats", key: "id" },
-            },
-            application_id: {
-                type: DataTypes.INTEGER,
-                allowNull: false,
-                references: { model: "applications", key: "id" },
             },
         },
         {
