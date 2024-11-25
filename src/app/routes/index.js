@@ -7,6 +7,6 @@ const messageRoutes = require("./messageRoutes");
 
 app.use("/applications", applicationRoutes);
 app.use("/applications/:token/chats", chatRoutes);
-app.use("/applications/:token/chats/:chatNumber/messages", messageRoutes);
+app.use("/applications/:token/chats/:number/messages", messageRoutes);
 
 module.exports = app;
