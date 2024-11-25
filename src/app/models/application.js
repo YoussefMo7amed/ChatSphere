@@ -36,8 +36,6 @@ module.exports = (sequelize) => {
             },
             token: {
                 type: DataTypes.UUID,
-                defaultValue: uuidv4,
-                unique: true,
             },
             chats_count: {
                 type: DataTypes.INTEGER,
@@ -58,13 +56,18 @@ module.exports = (sequelize) => {
             // --- for soft delete ---
             // paranoid: true,
             // deletedAt: "deleted_at",
-
-            // hooks: {
-            //     beforeCreate: (application) => {
-            //         application.token = uuidv4();
-            //         console.log("Generated Token:", application.token);
-            //     },
-            // },
+            indexes: [
+                {
+                    unique: true,
+                    fields: ["token"],
+                },
+            ],
+            hooks: {
+                beforeCreate: (application) => {
+                    application.token = uuidv4();
+                    console.log("Generated Token:", application.token);
+                },
+            },
         }
     );
 
