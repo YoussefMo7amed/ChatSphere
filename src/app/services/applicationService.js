@@ -15,6 +15,31 @@ const responseFormatter = (application) => {
     };
 };
 
+/**
+ * Creates a Redis key for an application based on its identifier.
+ * If the identifier is an `id`, it creates a reference key pointing to the corresponding token key.
+ * @param {string} identifier - The token or ID of the application.
+ * @param {boolean} isToken - Whether the identifier is a token (true) or an ID (false).
+ * @param {boolean} formatted - Whether the key is for formatted or raw data.
+ * @returns {string} - The Redis key for the application.
+ */
+function createRedisApplicationKey(
+    identifier,
+    isToken = true,
+    formatted = false
+) {
+    const keyType = isToken ? "token" : "id";
+    const dataType = formatted ? "formatted" : "raw";
+    const key = `application:${keyType}:${identifier}:${dataType}`;
+
+    // If it's an ID, return a ref key to the corresponding token key
+    if (!isToken) {
+        return `ref:application:token:${identifier}:${dataType}`;
+    }
+
+    return key;
+}
+
 class ApplicationService {
     /**
      * Create an application with the given name.
@@ -29,8 +54,16 @@ class ApplicationService {
             const response = responseFormatter(application);
             const cachedData = JSON.stringify(response);
 
-            const cacheKeyByToken = `application:token:${application.token}`;
-            const cacheKeyById = `application:id:${application.id}`;
+            const cacheKeyByToken = createRedisApplicationKey(
+                application.token,
+                true,
+                true
+            );
+            const cacheKeyById = createRedisApplicationKey(
+                application.id,
+                false,
+                true
+            );
 
             try {
                 await RedisClient.setCache(
@@ -41,9 +74,8 @@ class ApplicationService {
 
                 await RedisClient.setCache(
                     cacheKeyById,
-                    null,
-                    5 * TIME_CONSTANTS.MINUTE,
-                    cacheKeyByToken
+                    cacheKeyByToken,
+                    5 * TIME_CONSTANTS.MINUTE
                 );
             } catch (cacheError) {
                 console.warn(
@@ -107,8 +139,6 @@ class ApplicationService {
             );
         }
     }
-
-    
     /**
      * Retrieve an application by its token.
      * If available, fetches from Redis cache, otherwise fetches from the database and caches the result.
@@ -118,45 +148,48 @@ class ApplicationService {
      * @throws {Error} - If there is an error retrieving the application.
      */
     async getApplicationByToken(token, formatted = true) {
+        const cacheKey = createRedisApplicationKey(token, true, formatted);
+
         try {
             let application = null;
             try {
-                application = await RedisClient.getCache(
-                    `application:token:${token}` + `:${formatted}`
-                );
+                application = await RedisClient.getCache(cacheKey);
                 if (application) {
                     return JSON.parse(application);
                 }
             } catch (cacheError) {
-                console.warn(
-                    "Redis unavailable, proceeding without cache",
-                    cacheError
-                );
+                console.warn("Redis cache read failed:", cacheError);
             }
 
             application = await applicationRepository.findByToken(token);
 
+            if (!application) {
+                throw new Error(`Application not found for token: ${token}`);
+            }
+
             const response = formatted
                 ? responseFormatter(application)
                 : application;
+
+            const idCacheKey = createRedisApplicationKey(
+                application.id,
+                false,
+                formatted
+            );
             try {
                 await RedisClient.setCache(
-                    `application:token:${token}` + `:${formatted}`,
+                    cacheKey,
                     JSON.stringify(response),
                     2 * TIME_CONSTANTS.MINUTE
                 );
 
                 await RedisClient.setCache(
-                    `application:id:${application.id}` + `:${formatted}`,
-                    null,
-                    2 * TIME_CONSTANTS.MINUTE,
-                    `application:token:${token}` + `:${formatted}`
+                    idCacheKey,
+                    cacheKey,
+                    2 * TIME_CONSTANTS.MINUTE
                 );
             } catch (cacheError) {
-                console.warn(
-                    "Redis unavailable, could not cache result",
-                    cacheError
-                );
+                console.warn("Redis cache write failed:", cacheError);
             }
 
             return response;
@@ -168,31 +201,38 @@ class ApplicationService {
 
     /**
      * Update an application by its token.
-     * @param {string} token - The unique token of the application to be updated
-     * @param {Object} updates - The updates to be applied to the application
-     * @returns {Promise<Application>} - The updated application
-     * @throws {Error} - If there is an error during the operation
+     * @param {string} token - The unique token of the application to be updated.
+     * @param {Object} updates - The updates to be applied to the application.
+     * @returns {Promise<Application>} - The updated application.
+     * @throws {Error} - If there is an error during the operation.
      */
     async updateApplicationByToken(token, updates) {
         try {
             const { name } = updates;
+
             const updatedApplication =
                 await applicationRepository.updateByToken(token, { name });
 
             const formattedResponse = responseFormatter(updatedApplication);
 
+            const tokenCacheKey = createRedisApplicationKey(token, true, true);
+            const idCacheKey = createRedisApplicationKey(
+                updatedApplication.id,
+                false,
+                true
+            );
+
             try {
                 await RedisClient.setCache(
-                    `application:token:${token}`,
+                    tokenCacheKey,
                     JSON.stringify(formattedResponse),
                     2 * TIME_CONSTANTS.MINUTE
                 );
 
                 await RedisClient.setCache(
-                    `application:id:${updatedApplication.id}`,
-                    null,
-                    2 * TIME_CONSTANTS.MINUTE,
-                    `application:token:${token}`
+                    idCacheKey,
+                    tokenCacheKey,
+                    2 * TIME_CONSTANTS.MINUTE
                 );
             } catch (cacheError) {
                 console.warn(
@@ -209,16 +249,16 @@ class ApplicationService {
     }
 
     /**
-     * Updates an application by its Id
-     * @param {number} id - The unique id of the application to be updated
-     * @param {Object} updates - The updates to be applied to the application
-     * @returns {Promise<Application>} - The updated application
-     * @throws {NotFoundError} - If the application is not found
-     * @throws {Error} - If there is an error during the operation
+     * Update an application by its ID.
+     * @param {string} id - The unique ID of the application to be updated.
+     * @param {Object} updates - The updates to be applied to the application.
+     * @returns {Promise<Object>} - The updated application object.
+     * @throws {Error} - If there is an error during the operation.
      */
     async updateApplicationById(id, updates) {
         try {
             const { name } = updates;
+
             const updatedApplication = await applicationRepository.updateById(
                 id,
                 { name }
@@ -226,18 +266,28 @@ class ApplicationService {
 
             const formattedResponse = responseFormatter(updatedApplication);
 
+            const tokenCacheKey = createRedisApplicationKey(
+                updatedApplication.token,
+                true,
+                true
+            );
+            const idCacheKey = createRedisApplicationKey(
+                updatedApplication.id,
+                false,
+                true
+            );
+
             try {
                 await RedisClient.setCache(
-                    `application:token:${token}`,
+                    tokenCacheKey,
                     JSON.stringify(formattedResponse),
                     2 * TIME_CONSTANTS.MINUTE
                 );
 
                 await RedisClient.setCache(
-                    `application:id:${updatedApplication.id}`,
-                    null,
-                    2 * TIME_CONSTANTS.MINUTE,
-                    `application:token:${token}`
+                    idCacheKey,
+                    tokenCacheKey,
+                    2 * TIME_CONSTANTS.MINUTE
                 );
             } catch (cacheError) {
                 console.warn(
@@ -254,24 +304,27 @@ class ApplicationService {
     }
 
     /**
-     * Deletes an application by its token
-     * @param {string} token - The unique token of the application to be deleted
-     * @returns {Promise<void>} - A promise that resolves when the application is deleted
-     * @throws {NotFoundError} - If the application is not found
-     * @throws {Error} - If there is an error during the operation
+     * Deletes an application by its token.
+     * @param {string} token - The unique token of the application to be deleted.
+     * @returns {Promise<void>} - A promise that resolves when the application is deleted.
+     * @throws {Error} - If there is an error during the operation.
      */
     async deleteApplicationByToken(token) {
         try {
             const application = await applicationRepository.deleteByToken(
                 token
             );
-            try {
-                await RedisClient.deleteCache(`application:token:${token}`);
 
-                if (application?.id) {
-                    await RedisClient.deleteCache(
-                        `application:id:${application.id}`
-                    );
+            const tokenCacheKey = createRedisApplicationKey(token, true, true);
+            const idCacheKey = application?.id
+                ? createRedisApplicationKey(application.id, false, true)
+                : null;
+
+            try {
+                await RedisClient.deleteCache(tokenCacheKey);
+
+                if (idCacheKey) {
+                    await RedisClient.deleteCache(idCacheKey);
                 }
             } catch (cacheError) {
                 console.warn(
