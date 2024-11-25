@@ -11,13 +11,13 @@ class ChatRepository {
     }
 
     /**
-     * Finds a chat based on the specified where clause.
+     * Finds a chat by its where clause.
      * @param {object} whereClause - The conditions to find the chat.
-     * @param {Transaction} transaction - The transaction to use for the query.
+     * @param {Transaction} [transaction] - The transaction to use for the query (optional).
      * @returns {Promise<object>} - The found chat.
-     * @throws {NotFoundError} - If no chat is found.
+     * @throws {NotFoundError} - If the chat is not found.
      */
-    async _find(whereClause, transaction) {
+    async _find(whereClause, transaction = null) {
         const chat = await Chat.findOne({
             where: whereClause,
             transaction,
@@ -104,14 +104,30 @@ class ChatRepository {
     }
 
     /**
+     * Finds a chat by its ID.
+     * @param {number} id - The ID of the chat.
+     * @param {Transaction} [transaction] - The transaction to use for the query (optional).
+     * @returns {Promise<Chat|null>} - A promise that resolves to the found chat or null if no chat is found.
+     */
+    async findById(id, transaction = null) {
+        try {
+            return await this._find({
+                where: { id },
+                transaction,
+            });
+        } catch (error) {
+            console.error(error);
+            throw new Error(`Error finding chat by id: ${error.message}`);
+        }
+    }
+
+    /**
      * Retrieves all chats for a specific application
      * @param {number} application_id - The ID of the application
      * @param {object} filterParams - The filter parameters for the query
      * @returns {Promise<Chat[]>} - A promise that resolves to the list of chats
      */
     async findAllByApplicationId(application_id, filterParams) {
-        console.log(`application_id: ${application_id}`);
-
         try {
             const { limit, offset, order, ...rest } = filterParamsToSQL(
                 filterParams,
@@ -144,19 +160,27 @@ class ChatRepository {
      */
     async findByNumberAndApplicationId(number, application_id, filterParams) {
         try {
-            return await this._find({ number, application_id });
+            return await this._find({ application_id, number });
         } catch (error) {
+            console.error(error);
             throw new Error(error.message);
         }
     }
 
+    /**
+     * Find a chat by its number and application token
+     * @param {number} number - The number of the chat
+     * @param {string} application_token - The token of the application
+     * @returns {Promise<Chat|null>} - The found chat or null if no chat is found
+     */
     async findByNumberAndApplicationToken(number, application_token) {
         try {
             const application = await applicationRepository.findByToken(
                 application_token
             );
-            return await this._find({ number, application_id: application.id });
+            return await this.findAllByApplicationId(number, application.id);
         } catch (error) {
+            console.error(error);
             throw new Error(error.message);
         }
     }
@@ -176,6 +200,7 @@ class ChatRepository {
                 transaction
             );
         } catch (error) {
+            console.error(error);
             throw new Error(error.message);
         }
     }
@@ -195,6 +220,7 @@ class ChatRepository {
                 transaction
             );
         } catch (error) {
+            console.error(error);
             throw new Error(error.message);
         }
     }
@@ -207,6 +233,7 @@ class ChatRepository {
         try {
             return await Chat.count();
         } catch (error) {
+            console.error(error);
             throw new Error(error.message);
         }
     }
@@ -221,6 +248,24 @@ class ChatRepository {
         try {
             return await this._update({ id: chat_id }, { messages_count });
         } catch (error) {
+            console.error(error);
+            throw new Error(error.message);
+        }
+    }
+
+    /**
+     * Deletes a chat by its ID.
+     * @param {number} chat_id - The ID of the chat to be deleted.
+     * @param {Transaction} [transaction] - The transaction to use for the query (optional).
+     * @returns {Promise<void>} - A promise that resolves when the chat is deleted.
+     * @throws {NotFoundError} - If the chat is not found.
+     * @throws {Error} - If there is an error during the operation.
+     */
+    async deleteById(chat_id, transaction = null) {
+        try {
+            await this._delete({ id: chat_id }, transaction);
+        } catch (error) {
+            console.error(error);
             throw new Error(error.message);
         }
     }
