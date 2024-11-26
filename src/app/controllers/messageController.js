@@ -12,15 +12,16 @@ class MessageController {
      */
     async create(req, res) {
         try {
-            const { token, chatNumber } = req.params; // Application token and chat number
-            const { body } = req.body; // Message body
+            const { token, number } = req.params;
+            const { body } = req.body;
             const message = await messageService.createMessage(
                 token,
-                chatNumber,
+                number,
                 body
             );
             successResponse(res, message, 201);
         } catch (error) {
+            console.error(error);
             errorResponse(res, error.message, 400);
         }
     }
@@ -32,12 +33,13 @@ class MessageController {
      */
     async getMessages(req, res) {
         try {
-            const { token, chatNumber } = req.params; // Application token and chat number
-            const messages = await messageService.getMessages(
+            const { token, number } = req.params;
+            const { data, ...meta } = await messageService.getAllMessages(
                 token,
-                chatNumber
+                number,
+                req.query
             );
-            successResponse(res, messages, 200);
+            successResponse(res, data, 200, meta);
         } catch (error) {
             errorResponse(res, error.message, 400);
         }
