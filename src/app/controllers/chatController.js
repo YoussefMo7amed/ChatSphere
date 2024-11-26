@@ -46,7 +46,7 @@ class ChatController {
         try {
             const { page = 1, limit = 10 } = req.query;
             const { token } = req.params;
-            const { data, ...meta } = await chatService.getChats(token, {
+            const { data, ...meta } = await chatService.getAllChats(token, {
                 page,
                 limit,
             });
