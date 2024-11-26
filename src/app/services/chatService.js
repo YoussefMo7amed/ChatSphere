@@ -18,24 +18,29 @@ const responseFormatter = (chat, application) => {
     };
 };
 
-/**
- * Creates the key for Redis given the application token, chat number, and format.
- * @param {string} applicationToken - The application token.
- * @param {number} chatNumber - The chat number.
- * @param {boolean} [formatted=true] - Whether the response is formatted or not.
- * @returns {string} - The Redis key.
- */
-const createRedisMessageKey = (
-    applicationToken,
-    chatNumber,
-    formatted = true
-) => {
-    return `chat:${applicationToken}:${chatNumber}:${
-        formatted ? "formatted" : "raw"
-    }`;
-};
-
 class ChatService {
+    /**
+     * Creates the key for Redis given the application token, chat number, and format.
+     * @param {string} applicationToken - The application token.
+     * @param {number} chatNumber - The chat number.
+     * @param {boolean} [formatted=true] - Whether the response is formatted or not.
+     * @returns {string} - The Redis key.
+     */
+    createRedisChatKey(applicationToken, chatNumber, formatted = true) {
+        return `chat:${applicationToken}:${chatNumber}:${
+            formatted ? "formatted" : "raw"
+        }`;
+    }
+
+    /**
+     * Returns the Redis key for the message counter of a chat
+     * @param {string} applicationToken - The token of the application
+     * @param {number} chatNumber - The number of the chat
+     * @returns {string} - The redis key
+     */
+    messageCounterKey(applicationToken, chatNumber) {
+        return `chat:${applicationToken}:${chatNumber}:messageCounter`;
+    }
     /**
      * Creates a new chat associated with an application token.
      * Caches the newly created chat if successful.
@@ -67,7 +72,7 @@ class ChatService {
 
             const response = responseFormatter(chat, application);
 
-            const cacheKey = createRedisMessageKey(
+            const cacheKey = this.createRedisChatKey(
                 application.token,
                 chat.number,
                 true
@@ -103,9 +108,9 @@ class ChatService {
      * @throws {NotFoundError} - If the application is not found.
      * @throws {Error} - If there is an error retrieving chats.
      */
-    async getChats(applicationToken, filterParams) {
+    async getAllChats(applicationToken, filterParams) {
         try {
-            const cacheKey = `${createRedisMessageKey(
+            const cacheKey = `${this.createRedisChatKey(
                 applicationToken,
                 "all"
             )}:page:${filterParams.page}:limit:${filterParams.limit}`;
@@ -184,7 +189,7 @@ class ChatService {
                 throw new NotFoundError("Application not found");
             }
 
-            const cacheKey = createRedisMessageKey(
+            const cacheKey = this.createRedisChatKey(
                 applicationToken,
                 chatNumber,
                 formatted
@@ -208,7 +213,7 @@ class ChatService {
                 chatNumber,
                 application.id
             );
-
+            chat.token = applicationToken;
             const response = formatted
                 ? responseFormatter(chat, application)
                 : chat;
@@ -259,12 +264,12 @@ class ChatService {
 
             await chatRepository.deleteById(chat.id, transaction);
 
-            const cacheKeyFormatted = createRedisMessageKey(
+            const cacheKeyFormatted = this.createRedisChatKey(
                 applicationToken,
                 chatNumber,
                 true
             );
-            const cacheKeyRaw = createRedisMessageKey(
+            const cacheKeyRaw = this.createRedisChatKey(
                 applicationToken,
                 chatNumber,
                 false
