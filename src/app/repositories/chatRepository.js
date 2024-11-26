@@ -1,4 +1,4 @@
-const { Chat } = require("../models");
+const { Chat, sequelize } = require("../models");
 const applicationRepository = require("./applicationRepository");
 const { filterParamsToSQL, NotFoundError } = require("../../utils/shared");
 
