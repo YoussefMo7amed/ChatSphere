@@ -1,10 +1,13 @@
 const chatService = require("../services/chatService");
+const searchService = require("./searchService");
 
 const chatRepository = require("../repositories/chatRepository");
 const messageRepository = require("../repositories/messageRepository");
 
 const { RedisClient, TIME_CONSTANTS } = require("../../utils/cacheUtils");
 const { paginationBuilder } = require("../../utils/shared");
+
+const { publishMessageCreation } = require("../../publishers/messagePublisher");
 
 /**
  * Formats a message and chat object into a standardized response format.
@@ -30,6 +33,12 @@ const responseFormatter = (message, chat) => {
         createdAt: message.created_at,
     };
 };
+
+const searchResponseFormatter = (found) => {
+    const { _source } = found;
+    return responseFormatter(_source);
+};
+
 class MessageService {
     /**
      * Creates the Redis key for a list of messages
@@ -49,13 +58,6 @@ class MessageService {
             formatted ? "formatted" : "raw"
         }`;
     }
-    /**
-     * Add a message to a chat with caching optimization
-     * @param {string} applicationToken - The token of the application
-     * @param {number} chatNumber - The number of the chat
-     * @param {string} body - The content of the message
-     * @returns {Promise<object>} - The created message
-     */
     async createMessage(applicationToken, chatNumber, body) {
         const chatCacheKey = chatService.createRedisChatKey(
             applicationToken,
@@ -81,7 +83,7 @@ class MessageService {
             chat = JSON.parse(chat);
         }
 
-        const messageCounterKey = chatService.messageCounterKey(
+        const messageCounterKey = chatService.chatMessagesCounterKey(
             applicationToken,
             chatNumber
         );
@@ -106,11 +108,40 @@ class MessageService {
             application_id: chat.application_id,
         });
 
-        await chatRepository.incrementMessagesCount(chat.id);
-        await RedisClient.deleteCache(chatCacheKey);
+        try {
+            await publishMessageCreation(message.dataValues);
+        } catch (error) {
+            console.error(
+                "Failed to publish message creation to RabbitMQ:",
+                error
+            );
+        }
+
+        try {
+            await chatRepository.incrementMessagesCount(chat.id);
+        } catch (error) {
+            console.error("Failed to increment messages count:", error);
+        }
+
+        try {
+            await RedisClient.deleteCache(chatCacheKey);
+        } catch (error) {
+            console.error("Failed to delete cache:", error);
+        }
 
         const recentMessagesKey = `chat:${applicationToken}:${chatNumber}:recentMessages:raw`;
-        await RedisClient.deleteCache(recentMessagesKey);
+        try {
+            await RedisClient.deleteCache(recentMessagesKey);
+        } catch (error) {
+            console.error("Failed to delete recent messages cache:", error);
+        }
+
+        // Call searchService to index the message in Elasticsearch
+        // try {
+        //     await searchService.indexMessage(message);
+        // } catch (error) {
+        //     console.error("Failed to index message in Elasticsearch", error);
+        // }
 
         return responseFormatter(message, chat);
     }
@@ -315,7 +346,7 @@ class MessageService {
         const recentMessagesKey = `chat:${applicationToken}:${chatNumber}:recentMessages:raw`;
 
         // Perform update in DB
-        await messageRepository.update(
+        await messageRepository.updateMessage(
             { chatId: chat.id, number: messageNumber },
             updates
         );
@@ -324,6 +355,48 @@ class MessageService {
         await RedisClient.deleteCache(messageKey);
         await RedisClient.deleteCache(recentMessagesKey);
     }
+
+    /**
+     * Search messages with partial matching
+     * @param {string} applicationToken - The application token
+     * @param {number} chatNumber - The chat number
+     * @param {string} query - The search query
+     * @param {object} filterParams - Pagination options (e.g., page, limit)
+     * @returns {Promise<object>} - Paginated search results
+     */
+    async searchMessages(applicationToken, chatNumber, query, filterParams) {
+        const chat = await chatService.getChat(
+            applicationToken,
+            chatNumber,
+            false
+        );
+        if (!chat) throw new Error("Chat not found");
+        //TODO
+        // const { messages, total } = await searchService.searchMessages(
+        //     chat.id,
+        //     query,
+        //     filterParams
+        // );
+
+        // return {
+        //     data: messages.map((message) => responseFormatter(message, chat)),
+        //     pagination,
+        // };
+        const { messages, total } =
+            await searchService.searchMessagesWithWildcard(
+                query,
+                [{ term: { chatId: chat.id } }],
+                "messages"
+            );
+
+        const pagination = paginationBuilder(filterParams, total);
+        return {
+            data: messages.map(searchResponseFormatter),
+            meta: { pagination, applicationToken, chatNumber },
+        };
+    }
 }
 
 module.exports = new MessageService();
+
+// Methods in the MessageService class

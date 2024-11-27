@@ -3,6 +3,7 @@ const applicationService = require("./applicationService");
 const { paginationBuilder, NotFoundError } = require("../../utils/shared");
 const { RedisClient, TIME_CONSTANTS } = require("../../utils/cacheUtils");
 const { sequelize } = require("../models");
+const { publishChatCreation } = require("../../publishers/chatPublisher");
 /**
  * Formats a chat object into a response object, only exposing the number and messages count.
  * The application token is also included if the application is provided.
@@ -38,8 +39,31 @@ class ChatService {
      * @param {number} chatNumber - The number of the chat
      * @returns {string} - The redis key
      */
-    messageCounterKey(applicationToken, chatNumber) {
+    chatMessagesCounterKey(applicationToken, chatNumber) {
         return `chat:${applicationToken}:${chatNumber}:messageCounter`;
+    }
+
+    /**
+     * Generates a Redis key for the paginated list of chats for a specific application.
+     * @param {string} applicationToken - The token of the application.
+     * @param {object} filterParams - The filter parameters for pagination.
+     * @param {number} filterParams.page - The page number of the pagination.
+     * @param {number} filterParams.limit - The number of items per page.
+     * @returns {string} - The Redis key for the chats list.
+     */
+    createRedisChatsListKey(applicationToken, filterParams) {
+        return `application:${applicationToken}:chats:page:${filterParams.page}:limit:${filterParams.limit}`;
+    }
+
+    /**
+     * Deletes all the cached paginated chats list keys for a specific application token.
+     * @param {string} applicationToken - The token of the application.
+     * @returns {Promise<void>}
+     */
+    async deleteChatsListCache(applicationToken) {
+        await RedisClient.deleteByPrefix(
+            `application:${applicationToken}:chats:page:`
+        );
     }
     /**
      * Creates a new chat associated with an application token.
@@ -52,6 +76,7 @@ class ChatService {
         const transaction = await sequelize.transaction();
 
         try {
+            // Retrieve the application
             const application = await applicationService.getApplicationByToken(
                 applicationToken,
                 false
@@ -60,6 +85,7 @@ class ChatService {
                 throw new NotFoundError("Application not found");
             }
 
+            // Create the chat in the database
             const chat = await chatRepository.create(
                 {
                     application_id: application.id,
@@ -70,35 +96,64 @@ class ChatService {
 
             await transaction.commit();
 
+            // Format the response
             const response = responseFormatter(chat, application);
 
-            const cacheKey = this.createRedisChatKey(
-                application.token,
-                chat.number,
-                true
-            );
+            // Publish the chat creation to RabbitMQ for background processing
             try {
+                await publishChatCreation(applicationToken);
+            } catch (queueError) {
+                console.error(
+                    "Failed to publish chat creation to RabbitMQ:",
+                    queueError
+                );
+            }
+
+            // Cache-related operations
+            try {
+                const applicationChatsCounterKey =
+                    applicationService.applicationChatsCounterKey(
+                        applicationToken
+                    );
+
+                // Increment Redis chat counter
+                await applicationService.getApplicationChatsCounter(
+                    applicationToken
+                );
+                await RedisClient.increment(applicationChatsCounterKey);
+
+                // Initialize a counter for the new chat's messages
+                await RedisClient.setCounter(
+                    this.chatMessagesCounterKey(applicationToken, chat.number)
+                );
+
+                // Cache the chat
+                const cacheKey = this.createRedisChatKey(
+                    application.token,
+                    chat.number,
+                    true
+                );
                 await RedisClient.setCache(
                     cacheKey,
                     JSON.stringify(response),
                     5 * TIME_CONSTANTS.MINUTE
                 );
             } catch (cacheError) {
-                console.error(cacheError);
-                console.warn(
-                    "Redis unavailable, could not cache the new chat",
+                console.error(
+                    "Redis unavailable, could not cache the new chat:",
                     cacheError
                 );
             }
 
             return response;
         } catch (error) {
+            // await transaction.rollback();
             console.error(error);
-            await transaction.rollback();
             console.error(`Error creating chat: ${error.message}`);
             throw error;
         }
     }
+
     /**
      * Retrieve all chats for a specified application with pagination and filtering options.
      * Results are cached for performance.
@@ -236,6 +291,56 @@ class ChatService {
         } catch (error) {
             console.error(error);
             console.error(`Error getting chat: ${error.message}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Updates a chat by its chat number and associated application token.
+     * @param {string} applicationToken - The token of the application to which the chat belongs.
+     * @param {string|number} chatNumber - The number of the chat to be updated.
+     * @param {Object} updates - The updates to be applied to the chat.
+     * @returns {Promise<Object>} - The updated chat object.
+     * @throws {Error} - If there is an error updating the chat.
+     */
+    async updateChat(applicationToken, chatNumber, updates) {
+        try {
+            const application = await applicationService.getApplicationByToken(
+                applicationToken,
+                false
+            );
+            if (!application) {
+                throw new NotFoundError("Application not found");
+            }
+
+            const chat = await chatRepository.findByNumberAndApplicationId(
+                chatNumber,
+                application.id
+            );
+            if (!chat) {
+                throw new NotFoundError("Chat not found");
+            }
+
+            const updatedChat = await chatRepository.updateById(
+                chat.id,
+                updates
+            );
+            const response = responseFormatter(updatedChat, application);
+
+            const cacheKey = this.createRedisChatKey(
+                applicationToken,
+                chatNumber,
+                true
+            );
+            await RedisClient.setCache(
+                cacheKey,
+                JSON.stringify(response),
+                2 * TIME_CONSTANTS.MINUTE
+            );
+
+            return response;
+        } catch (error) {
+            console.error(`Error updating chat: ${error.message}`);
             throw error;
         }
     }
