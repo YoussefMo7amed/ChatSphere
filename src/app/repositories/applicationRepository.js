@@ -185,6 +185,44 @@ class ApplicationRepository {
     async updateChatsCount(token, count, transaction = null) {
         return this._update({ token }, { chats_count: count }, transaction);
     }
+
+    /**
+     * Increments the chats count of an application.
+     * @param {string} token - The unique token of the application.
+     * @param {number} [incrementBy=1] - The value to increment the chats count by.
+     * @param {Transaction} [transaction] - The transaction to use (optional). If not provided, a new one will be created.
+     * @returns {Promise<Application>} - The updated application.
+     * @throws {NotFoundError} - If the application is not found.
+     * @throws {Error} - If there is an error during the operation.
+     */
+    async incrementChatsCount(token, incrementBy = 1, transaction = null) {
+        console.log(
+            `Incrementing chats_count for token: ${token} by ${incrementBy}`
+        );
+
+        return this._update(
+            { token },
+            { chats_count: sequelize.literal(`chats_count + ${incrementBy}`) },
+            transaction
+        );
+    }
+    /**
+     * Decrements the chats count of an application.
+     * @param {string} token - The unique token of the application.
+     * @param {number} [decrementBy=1] - The value to decrement the chats count by.
+     * @param {Transaction} [transaction] - The transaction to use (optional). If not provided, a new one will be created.
+     * @returns {Promise<Application>} - The updated application.
+     * @throws {NotFoundError} - If the application is not found.
+     * @throws {Error} - If there is an error during the operation.
+     */
+    async decrementChatsCount(token, decrementBy = 1, transaction = null) {
+        return this._update(
+            { token },
+            { chats_count: sequelize.literal(`chats_count - ${decrementBy}`) },
+            transaction
+        );
+    }
+
     /**
      * Deletes an application by its token
      * @param {string} token - The unique token of the application to be deleted
