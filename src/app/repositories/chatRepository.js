@@ -226,12 +226,17 @@ class ChatRepository {
     }
 
     /**
-     * Count the total number of chats in the database
-     * @returns {Promise<number>} - A promise that resolves to the total chat count
+     * Count the number of chats for a given application and messages count
+     * @param {object} filterParams - The filtering parameters
+     * @param {number} filterParams.application_id - The ID of the application
+     * @param {number} [filterParams.messages_count] - The messages count to filter by
+     * @returns {Promise<number>} - The count of chats
+     * @throws {Error} - If there is an error during the operation.
      */
-    async count() {
+    async count(filterParams) {
         try {
-            return await Chat.count();
+            const { application_id, messages_count } = filterParams;
+            return await Chat.count({ application_id, messages_count });
         } catch (error) {
             console.error(error);
             throw new Error(error.message);
@@ -239,12 +244,26 @@ class ChatRepository {
     }
 
     /**
+     * Update a chat
+     * @param {number} chat_id - The ID of the chat
+     * @param {object} updates - The updates to apply
+     * @returns {Promise<Chat>} - The updated chat
+     */
+    async updateById(chat_id, updates) {
+        try {
+            return await this._update({ id: chat_id }, updates);
+        } catch (error) {
+            console.error(error);
+            throw new Error(error.message);
+        }
+    }
+    /**
      * Update the messages count of a chat
      * @param {number} chat_id - The ID of the chat
      * @param {number} messages_count - The new messages count
      * @returns {Promise<Chat>} - The updated chat
      */
-    async updateMessagesCount(chat_id, messages_count) {
+    async updateMessagesCountById(chat_id, messages_count) {
         try {
             return await this._update({ id: chat_id }, { messages_count });
         } catch (error) {
