@@ -95,10 +95,11 @@ class RedisClient {
         }
 
         try {
-            const newValue = await client.incrBy(key, increment); // Use incrBy
-            console.log(
-                `New value after incrementing by ${increment}: ${newValue}`
-            );
+            const newValue = await client.incrBy(key, increment);
+
+            if (newValue === 1) {
+                await client.expire(key, TIME_CONSTANTS.HOUR);
+            }
             return newValue;
         } catch (error) {
             console.warn(
@@ -122,12 +123,39 @@ class RedisClient {
         }
 
         try {
-            const newValue = await client.decrBy(key, decrement); // Use decrBy
-            return newValue; // Return the new value
+            const newValue = await client.decrBy(key, decrement);
+            if (newValue < 0) {
+                await client.set(key, 0);
+                return 0;
+            }
+            return newValue;
         } catch (error) {
             console.warn(
                 `Redis error while decrementing cache: ${error.message}`
             );
+            throw error;
+        }
+    }
+
+    /**
+     * Sets a counter value in Redis cache with an optional time-to-live (TTL).
+     * @param {string} key - Cache key to store the value under.
+     * @param {number} [value=0] - The value to set.
+     * @param {number} [ttl=TIME_CONSTANTS.HOUR] - Time-to-live for the cached item in seconds.
+     * @returns {Promise<number>} - The new count.
+     */
+    static async setCounter(key, value = 0, ttl = TIME_CONSTANTS.HOUR) {
+        const client = getRedisClient();
+        if (!client) {
+            console.warn("Redis is unavailable, not setting counter.");
+            return null; // Return null if Redis is unavailable
+        }
+
+        try {
+            await client.set(key, value, { EX: ttl });
+            return value;
+        } catch (error) {
+            console.warn(`Redis error while setting counter: ${error.message}`);
             throw error;
         }
     }
