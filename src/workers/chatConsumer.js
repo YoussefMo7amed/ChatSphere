@@ -1,70 +1,103 @@
+const amqp = require("amqplib");
 const applicationRepository = require("../app/repositories/applicationRepository");
-const sequelize = require("sequelize");
+const { Sequelize } = require("sequelize");
+const { getChannel } = require("../config/rabbitmq");
 
-async function consumeChatCreation(channel) {
+async function consumeChatCreation() {
+    const channel = await getChannel();
     const queue = "chat_creation_queue";
 
+    // Assert that the queue exists
     await channel.assertQueue(queue, { durable: true });
-
-    const batch = {};
 
     console.log("Starting batch processing for chat creation...");
 
-    let messageCount = 0;
+    const batch = {}; // Store counts for each application token
 
-    // Drain the queue and aggregate occurrences
-    while (true) {
-        const msg = await channel.get(queue, { noAck: false });
-        if (!msg) break;
+    // Start consuming messages from the queue
+    channel.consume(queue, (msg) => {
+        if (msg) {
+            try {
+                const messageContent = msg.content.toString();
+                console.log(`Received message: ${messageContent}`);
 
-        try {
-            console.log(JSON.parse(msg.content.toString()));
-            const applicationToken = JSON.parse(msg.content.toString());
-            batch[applicationToken] = (batch[applicationToken] || 0) + 1;
-            messageCount++;
+                const applicationToken = messageContent; // Assuming the message is just the application token (e.g. app1, app2)
 
-            channel.ack(msg);
-        } catch (error) {
-            console.error("Failed to process chat creation message:", error);
-            channel.nack(msg, false, true); // Requeue the message for retry
+                // Accumulate the count for each application token
+                batch[applicationToken] = (batch[applicationToken] || 0) + 1;
+
+                // Acknowledge the message after it has been added to the batch
+                channel.ack(msg);
+            } catch (error) {
+                console.error(
+                    "Failed to process chat creation message:",
+                    error
+                );
+                // If there's an error, nack the message and requeue it
+                channel.nack(msg, false, true);
+            }
         }
-    }
+    });
 
-    if (messageCount === 0) {
+    // Give some time for all messages to be consumed before processing the batch
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    // After processing all messages, log and process the batch
+    if (Object.keys(batch).length === 0) {
         console.log("No messages to process in this batch.");
         return;
     }
 
-    console.log(`Processing ${messageCount} messages...`);
-    console.log(batch);
-    for (const [applicationToken, count] of Object.entries(batch)) {
-        const transaction = await sequelize.transaction();
+    // Print the accumulated batch counts
+    console.log("Batch results:", batch);
 
+    // Begin a database transaction
+    let tx;
+    try {
+        tx = await Sequelize.transaction();
+    } catch (error) {
+        console.error("Failed to create transaction:", error);
+        return;
+    }
+
+    // Process each application token in the batch
+    for (const [applicationToken, count] of Object.entries(batch)) {
         try {
             console.log(
                 `Incrementing chat count for ${applicationToken} by ${count}`
             );
+
+            // Update the chat count for each application token
             await applicationRepository.incrementChatsCount(
                 applicationToken,
                 count,
-                transaction
+                tx
             );
 
-            // await transaction.commit(); // the commit handled in the repo
             console.log(
                 `Chat count for ${applicationToken} updated successfully.`
             );
         } catch (error) {
-            // await transaction.rollback(); the rollback handled in the repo
             console.error(
                 `Failed to update chat count for ${applicationToken}:`,
                 error
             );
+            // If there's an error, rollback the transaction
+            await tx.rollback();
+            return;
         }
     }
 
+    // Commit the transaction after all updates
+    try {
+        await tx.commit();
+        console.log("Batch processing completed successfully.");
+    } catch (error) {
+        console.error("Failed to commit transaction:", error);
+        await tx.rollback();
+    }
+
     // Clear the batch after processing
-    console.log("Batch processing completed.");
     Object.keys(batch).forEach((key) => delete batch[key]);
 }
 
