@@ -8,7 +8,7 @@ const { getChannel } = require("../config/rabbitmq");
  * @param {string} applicationToken - The token of the application for which the chat is being created.
  */
 async function publishChatCreation(applicationToken) {
-    const channel = getChannel();
+    const channel = await getChannel();
     const queue = "chat_creation_queue";
 
     await channel.assertQueue(queue, { durable: true });

@@ -8,7 +8,7 @@ const { getChannel } = require("../config/rabbitmq");
  * @param {object} messageData - The message data to be published
  */
 async function publishMessageCreation(messageData) {
-    const channel = getChannel();
+    const channel = await getChannel();
     const queue = "message_creation_queue";
 
     await channel.assertQueue(queue, { durable: true });
@@ -16,7 +16,7 @@ async function publishMessageCreation(messageData) {
         persistent: true,
     });
 
-    console.log("Published message creation:", messageData);
+    console.log("Published message creation");
 }
 
 module.exports = { publishMessageCreation };
