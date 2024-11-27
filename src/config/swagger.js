@@ -14,6 +14,19 @@ const swaggerOptions = {
                 description: "Development server",
             },
         ],
+        components: {
+            parameters: {
+                TokenParameter: {
+                    in: "path",
+                    name: "token",
+                    required: true,
+                    description: "The token of the application",
+                    schema: {
+                        type: "string",
+                    },
+                },
+            },
+        },
     },
     apis: ["./app/routes/*.js"],
 };
