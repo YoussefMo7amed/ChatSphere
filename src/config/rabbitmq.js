@@ -1,26 +1,31 @@
 const amqp = require("amqplib");
 
-let channel;
+let channelPromise;
 
 async function connectRabbitMQ() {
-    try {
-        const connection = await amqp.connect(
-            process.env.RABBITMQ_URL || "amqp://localhost"
-        );
-        channel = await connection.createChannel();
-        console.log("RabbitMQ connection established.");
-    } catch (error) {
-        console.error("Failed to connect to RabbitMQ:", error);
-        throw error;
+    if (!channelPromise) {
+        channelPromise = (async () => {
+            try {
+                const connection = await amqp.connect(
+                    process.env.RABBITMQ_URL || "amqp://localhost"
+                );
+                const channel = await connection.createChannel();
+                if (!channel) {
+                    throw new Error("Failed to create channel.");
+                }
+                console.log("RabbitMQ connection established.");
+                return channel;
+            } catch (error) {
+                console.error("Failed to connect to RabbitMQ:", error);
+                throw error;
+            }
+        })();
     }
+    return channelPromise;
 }
 
-function getChannel() {
-    if (!channel) {
-        throw new Error(
-            "RabbitMQ channel not initialized. Call connectRabbitMQ first."
-        );
-    }
+async function getChannel() {
+    const channel = await connectRabbitMQ();
     return channel;
 }
 
