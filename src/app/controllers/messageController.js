@@ -44,6 +44,28 @@ class MessageController {
             errorResponse(res, error.message, 400);
         }
     }
+
+    /**
+     * Search messages within a chat
+     * @param {Request} req
+     * @param {Response} res
+     */
+    async searchMessages(req, res) {
+        try {
+            const { token, number } = req.params;
+            const { query } = req.query;
+            const { data, ...meta } = await messageService.searchMessages(
+                token,
+                number,
+                query,
+                req.query
+            );
+            successResponse(res, data, 200, meta ?? null);
+        } catch (error) {
+            console.error(error);
+            errorResponse(res, error.message, 400);
+        }
+    }
 }
 
 module.exports = new MessageController();
