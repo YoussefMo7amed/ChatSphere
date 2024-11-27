@@ -7,40 +7,23 @@ const config = require("../../config/database")[env];
 
 const db = {};
 
-    const sequelize = new Sequelize(
-        config.database,
-        config.username,
-        config.password,
-        {
-            host: config.host,
-            dialect: config.dialect,
-            logging: false,
-            pool: {
-                max: 10, // Maximum number of connections
-                min: 0, // Minimum number of connections
-                acquire: 30000, // Timeout for acquiring a connection
-                idle: 10000, // Time before an idle connection is released
-            },
-        }
-    );
-
-// Create the database if it doesn't exist
-sequelize
-    .query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\`;`)
-    .then(() => {
-        console.log("Database created if not existed.");
-    })
-    .catch((err) => {
-        console.error("An error occurred while creating the database:", err);
-    })
-    .finally(() => {
-        try {
-            sequelize.authenticate();
-            console.log("Connection has been established successfully.");
-        } catch (err) {
-            console.error("Unable to connect to the database:", err);
-        }
-    });
+// Initialize Sequelize without creating or syncing the database
+const sequelize = new Sequelize(
+    config.database,
+    config.username,
+    config.password,
+    {
+        host: config.host,
+        dialect: config.dialect,
+        logging: false,
+        pool: {
+            max: 10, // Maximum number of connections
+            min: 0, // Minimum number of connections
+            acquire: 30000, // Timeout for acquiring a connection
+            idle: 10000, // Time before an idle connection is released
+        },
+    }
+);
 
 // Dynamically load all models in the folder
 fs.readdirSync(__dirname)
@@ -62,15 +45,6 @@ Object.keys(db).forEach((modelName) => {
     }
 });
 
-// Synchronize models with the database
-sequelize
-    .sync({ alter: true })
-    .then(() => {
-        console.log("All models were synchronized successfully.");
-    })
-    .catch((err) => {
-        console.error("An error occurred while synchronizing models:", err);
-    });
-
+// Export the Sequelize instance and models without reinitializing
 db.sequelize = sequelize;
 module.exports = db;
