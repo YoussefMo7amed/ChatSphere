@@ -1,5 +1,8 @@
 require("dotenv").config();
+const { Client } = require("@elastic/elasticsearch");
 
-module.exports = {
-    ELASTIC_URL: process.env.ELASTIC_URL,
-};
+const esClient = new Client({ node: process.env.ELASTIC_URL });
+
+module.exports = esClient;
+
+
