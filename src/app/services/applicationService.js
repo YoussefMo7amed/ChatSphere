@@ -1,6 +1,7 @@
 const applicationRepository = require("../repositories/applicationRepository");
 const { RedisClient, TIME_CONSTANTS } = require("../../utils/cacheUtils");
 const { paginationBuilder } = require("../../utils/shared");
+const chatRepository = require("../repositories/chatRepository");
 
 /**
  * Formats an application object into a response object, only exposing the name, token and messages count.
@@ -15,32 +16,50 @@ const responseFormatter = (application) => {
     };
 };
 
-/**
- * Creates a Redis key for an application based on its identifier.
- * If the identifier is an `id`, it creates a reference key pointing to the corresponding token key.
- * @param {string} identifier - The token or ID of the application.
- * @param {boolean} isToken - Whether the identifier is a token (true) or an ID (false).
- * @param {boolean} formatted - Whether the key is for formatted or raw data.
- * @returns {string} - The Redis key for the application.
- */
-function createRedisApplicationKey(
-    identifier,
-    isToken = true,
-    formatted = false
-) {
-    const keyType = isToken ? "token" : "id";
-    const dataType = formatted ? "formatted" : "raw";
-    const key = `application:${keyType}:${identifier}:${dataType}`;
+class ApplicationService {
+    /**
+     * Creates a Redis key for an application based on its identifier.
+     * If the identifier is an `id`, it creates a reference key pointing to the corresponding token key.
+     * @param {string} identifier - The token or ID of the application.
+     * @param {boolean} isToken - Whether the identifier is a token (true) or an ID (false).
+     * @param {boolean} formatted - Whether the key is for formatted or raw data.
+     * @returns {string} - The Redis key for the application.
+     */
+    createRedisApplicationKey(identifier, isToken = true, formatted = false) {
+        const keyType = isToken ? "token" : "id";
+        const dataType = formatted ? "formatted" : "raw";
+        const key = `application:${keyType}:${identifier}:${dataType}`;
+        if (!isToken) {
+            return `ref:application:token:${identifier}:${dataType}`;
+        }
 
-    // If it's an ID, return a ref key to the corresponding token key
-    if (!isToken) {
-        return `ref:application:token:${identifier}:${dataType}`;
+        return key;
+    }
+    /**
+     * Returns the Redis key for the chats counter of an application
+     * @param {string} applicationToken - The token of the application
+     * @returns {string} - The redis key
+     */
+    applicationChatsCounterKey(applicationToken) {
+        return `application:${applicationToken}:chatsCounter`;
     }
 
-    return key;
-}
+    /**
+     * Creates a Redis key for paginated applications list.
+     * @param {object} filterParams - The filter parameters for the query.
+     * @returns {string} - The Redis key.
+     */
+    createRedisApplicationsListKey(filterParams) {
+        return `applications:page:${filterParams.page}:limit:${filterParams.limit}`;
+    }
 
-class ApplicationService {
+    /**
+     * Deletes all the cached paginated applications list keys.
+     * @returns {Promise<void>}
+     */
+    async deleteApplicationsListCache() {
+        await RedisClient.deleteByPrefix(`applications:page:`);
+    }
     /**
      * Create an application with the given name.
      * @param {string} name The name of the application.
@@ -54,18 +73,20 @@ class ApplicationService {
             const response = responseFormatter(application);
             const cachedData = JSON.stringify(response);
 
-            const cacheKeyByToken = createRedisApplicationKey(
+            const cacheKeyByToken = this.createRedisApplicationKey(
                 application.token,
                 true,
                 true
             );
-            const cacheKeyById = createRedisApplicationKey(
+            const cacheKeyById = this.createRedisApplicationKey(
                 application.id,
                 false,
                 true
             );
-
             try {
+                await RedisClient.setCounter(
+                    this.applicationChatsCounterKey(application.token)
+                );
                 await RedisClient.setCache(
                     cacheKeyByToken,
                     cachedData,
@@ -77,13 +98,13 @@ class ApplicationService {
                     cacheKeyByToken,
                     5 * TIME_CONSTANTS.MINUTE
                 );
+                this.deleteApplicationsListCache();
             } catch (cacheError) {
                 console.warn(
                     "Redis unavailable, proceeding without cache",
                     cacheError
                 );
             }
-
             return response;
         } catch (error) {
             console.error(`Failed to create application: ${error.message}`);
@@ -139,6 +160,58 @@ class ApplicationService {
             );
         }
     }
+
+    /**
+     * Returns the chats count for an application from cache or database.
+     * @param {string} applicationToken - The token of the application.
+     * @returns {Promise<number>} - The chats count for the application.
+     */
+    async getApplicationChatsCounter(applicationToken) {
+        const applicationChatsCounterKey =
+            this.applicationChatsCounterKey(applicationToken);
+        let applicationChatsCounter;
+        try {
+            applicationChatsCounter = await RedisClient.getCache(
+                applicationChatsCounterKey
+            );
+        } catch (cacheError) {
+            console.warn(
+                "Redis unavailable, could not fetch or cache result",
+                cacheError
+            );
+        }
+        if (!applicationChatsCounter) {
+            const application = await applicationRepository.findByToken(
+                applicationToken
+            );
+            if (!application) {
+                throw new NotFoundError(
+                    `Application with token ${applicationToken} not found`
+                );
+            }
+            const chatsCount = await chatRepository.count({
+                application_id: application.id,
+            });
+            await applicationRepository.updateChatsCount(
+                applicationToken,
+                chatsCount
+            );
+            try {
+                await RedisClient.setCache(
+                    applicationChatsCounterKey,
+                    chatsCount
+                );
+            } catch (cacheError) {
+                console.warn(
+                    "Redis unavailable, could not cache result",
+                    cacheError
+                );
+            }
+            applicationChatsCounter = chatsCount;
+        }
+        return applicationChatsCounter;
+    }
+
     /**
      * Retrieve an application by its token.
      * If available, fetches from Redis cache, otherwise fetches from the database and caches the result.
@@ -148,7 +221,7 @@ class ApplicationService {
      * @throws {Error} - If there is an error retrieving the application.
      */
     async getApplicationByToken(token, formatted = true) {
-        const cacheKey = createRedisApplicationKey(token, true, formatted);
+        const cacheKey = this.createRedisApplicationKey(token, true, formatted);
 
         try {
             let application = null;
@@ -171,7 +244,7 @@ class ApplicationService {
                 ? responseFormatter(application)
                 : application;
 
-            const idCacheKey = createRedisApplicationKey(
+            const idCacheKey = this.createRedisApplicationKey(
                 application.id,
                 false,
                 formatted
@@ -215,8 +288,12 @@ class ApplicationService {
 
             const formattedResponse = responseFormatter(updatedApplication);
 
-            const tokenCacheKey = createRedisApplicationKey(token, true, true);
-            const idCacheKey = createRedisApplicationKey(
+            const tokenCacheKey = this.createRedisApplicationKey(
+                token,
+                true,
+                true
+            );
+            const idCacheKey = this.createRedisApplicationKey(
                 updatedApplication.id,
                 false,
                 true
@@ -234,13 +311,13 @@ class ApplicationService {
                     tokenCacheKey,
                     2 * TIME_CONSTANTS.MINUTE
                 );
+                this.deleteApplicationsListCache();
             } catch (cacheError) {
                 console.warn(
                     "Redis unavailable, could not update cache",
                     cacheError
                 );
             }
-
             return formattedResponse;
         } catch (error) {
             console.error(`Failed to update application: ${error.message}`);
@@ -266,12 +343,12 @@ class ApplicationService {
 
             const formattedResponse = responseFormatter(updatedApplication);
 
-            const tokenCacheKey = createRedisApplicationKey(
+            const tokenCacheKey = this.createRedisApplicationKey(
                 updatedApplication.token,
                 true,
                 true
             );
-            const idCacheKey = createRedisApplicationKey(
+            const idCacheKey = this.createRedisApplicationKey(
                 updatedApplication.id,
                 false,
                 true
@@ -289,6 +366,7 @@ class ApplicationService {
                     tokenCacheKey,
                     2 * TIME_CONSTANTS.MINUTE
                 );
+                this.deleteApplicationsListCache();
             } catch (cacheError) {
                 console.warn(
                     "Redis unavailable, could not update cache",
@@ -315,9 +393,13 @@ class ApplicationService {
                 token
             );
 
-            const tokenCacheKey = createRedisApplicationKey(token, true, true);
+            const tokenCacheKey = this.createRedisApplicationKey(
+                token,
+                true,
+                true
+            );
             const idCacheKey = application?.id
-                ? createRedisApplicationKey(application.id, false, true)
+                ? this.createRedisApplicationKey(application.id, false, true)
                 : null;
 
             try {
@@ -326,6 +408,7 @@ class ApplicationService {
                 if (idCacheKey) {
                     await RedisClient.deleteCache(idCacheKey);
                 }
+                this.deleteApplicationsListCache();
             } catch (cacheError) {
                 console.warn(
                     "Redis unavailable, could not invalidate cache",
