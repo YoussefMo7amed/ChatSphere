@@ -10,7 +10,7 @@ const esClient = require("./config/elasticsearch");
 const { connectRabbitMQ } = require("./config/rabbitmq");
 const { initializeDatabase } = require("./config/databaseInit");
 const { startChatCountJob } = require("./jobs/chatCountJob");
-const { startMessageCountJob } = require("./jobs/messageCountJob");
+// const { startMessageCountJob } = require("./jobs/messageCountJob");
 const { consumeMessageCreation } = require("./workers/messageConsumer");
 const app = express();
 
