@@ -9,9 +9,6 @@ services:
       - "3000:3000"
     stdin_open: true # Keep STDIN open for interaction
     tty: true # Allocate a pseudo-TTY
-    volumes:
-      - .:/project
-    command: ["npx", "nodemon", "./index.js"] # Command to run the application
     environment:
       NODE_ENV: development
       DATABASE_URL: mysql://app_user:app_password@db:3306/chat_db
